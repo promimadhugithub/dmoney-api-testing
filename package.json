@@ -1,0 +1,14 @@
+{
+  "name": "dmoney-api-testing",
+  "version": "1.0.0",
+  "description": "Integration testing of the DMoney API with Postman and Newman (Batch 20 assignment)",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "keywords": ["postman", "newman", "api-testing", "dmoney"],
+  "license": "ISC",
+  "devDependencies": {
+    "newman": "^6.2.1",
+    "newman-reporter-htmlextra": "^1.23.1"
+  }
+}

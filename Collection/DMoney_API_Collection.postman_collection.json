@@ -1,0 +1,2108 @@
+{
+  "info": {
+    "name": "DMoney API Testing - Postman Assignment",
+    "description": "# DMoney API - Integration testing with Postman\n\nEnd-to-end flow:\n\n1. Admin creates 2 Customers, 1 Agent and 1 Merchant\n2. Admin activates the users\n3. SYSTEM deposits 5000 tk to the Agent\n4. Agent deposits 2000 tk to Customer 1 (assert deposit commission)\n5. Customer 1 sends 1000 tk to Customer 2 (assert service fee)\n6. Customer 2 cashes out 500 tk from the Agent (assert service fee)\n7. Customer 2 pays 400 tk to the Merchant\n\n**Auth:** every protected request sends `Authorization: Bearer <JWT>` and `X-AUTH-SECRET-KEY: {{partnerKey}}`.\n\n**Run order matters** - run the collection top-to-bottom (Collection Runner / Newman).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Authentication (Admin & System)",
+      "description": "Admin and System accounts receive a JWT directly from /user/login (no OTP).",
+      "item": [
+        {
+          "name": "TC01 - Admin login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const token = body.token || body.accessToken;",
+                  "pm.test('JWT token is returned', () => { pm.expect(token).to.be.a('string'); pm.expect(token.length).to.be.above(10); });",
+                  "pm.collectionVariables.set('admin_token', token);",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login as Admin. The returned JWT is stored in `admin_token` and used for user creation / activation.\n\n**Expected:** 200 OK and a JWT token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC02 - System login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const token = body.token || body.accessToken;",
+                  "pm.test('JWT token is returned', () => { pm.expect(token).to.be.a('string'); pm.expect(token.length).to.be.above(10); });",
+                  "pm.collectionVariables.set('system_token', token);",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login with the SYSTEM account (system@dmoney.com / 1234). The JWT is stored in `system_token` and is used to fund the Agent.\n\n**Expected:** 200 OK and a JWT token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{systemEmail}}\",\n  \"password\": \"{{systemPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC03 - Login with wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('No token is returned', () => pm.expect(body.token).to.equal(undefined));",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login with a valid e-mail but an incorrect password.\n\n**Expected:** 401 Unauthorized, no token in the response.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"wrong-password-999\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Create Users (Admin)",
+      "description": "Admin creates 2 Customers, 1 Agent and 1 Merchant, plus negative scenarios. Random e-mail/phone/NID are generated in each pre-request script.",
+      "item": [
+        {
+          "name": "TC04 - Create Customer 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'customer1';",
+                  "const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');",
+                  "const stamp = Date.now().toString().slice(-8);",
+                  "pm.collectionVariables.set(K + '_name', 'QA Customer1 ' + rnd(3));",
+                  "pm.collectionVariables.set(K + '_email', 'dmoney.' + K + '.' + stamp + rnd(3) + '@gmail.com');",
+                  "pm.collectionVariables.set(K + '_phone', '01' + rnd(9));",
+                  "pm.collectionVariables.set(K + '_nid', rnd(10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const u = body.user || body.data || body;",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Created user matches the request (email + role)', () => {",
+                  "  pm.expect(u.email).to.eql(pm.variables.get('customer1_email'));",
+                  "  pm.expect(u.role).to.eql('Customer');",
+                  "});",
+                  "if (u && u.id !== undefined) { pm.collectionVariables.set('customer1_id', String(u.id)); }",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Admin creates a Customer (Customer 1 - receives the agent deposit and sends money) using POST /user/create. A new user is created with status `pending`.\n\n**Expected:** 201 Created; response contains the created user (e-mail and role match).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{customer1_name}}\",\n  \"email\": \"{{customer1_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer1_phone}}\",\n  \"nid\": \"{{customer1_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC05 - Create Customer 2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'customer2';",
+                  "const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');",
+                  "const stamp = Date.now().toString().slice(-8);",
+                  "pm.collectionVariables.set(K + '_name', 'QA Customer2 ' + rnd(3));",
+                  "pm.collectionVariables.set(K + '_email', 'dmoney.' + K + '.' + stamp + rnd(3) + '@gmail.com');",
+                  "pm.collectionVariables.set(K + '_phone', '01' + rnd(9));",
+                  "pm.collectionVariables.set(K + '_nid', rnd(10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const u = body.user || body.data || body;",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Created user matches the request (email + role)', () => {",
+                  "  pm.expect(u.email).to.eql(pm.variables.get('customer2_email'));",
+                  "  pm.expect(u.role).to.eql('Customer');",
+                  "});",
+                  "if (u && u.id !== undefined) { pm.collectionVariables.set('customer2_id', String(u.id)); }",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Admin creates a Customer (Customer 2 - receives money, cashes out and pays the merchant) using POST /user/create. A new user is created with status `pending`.\n\n**Expected:** 201 Created; response contains the created user (e-mail and role match).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{customer2_name}}\",\n  \"email\": \"{{customer2_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer2_phone}}\",\n  \"nid\": \"{{customer2_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC06 - Create Agent",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'agent';",
+                  "const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');",
+                  "const stamp = Date.now().toString().slice(-8);",
+                  "pm.collectionVariables.set(K + '_name', 'QA Agent ' + rnd(3));",
+                  "pm.collectionVariables.set(K + '_email', 'dmoney.' + K + '.' + stamp + rnd(3) + '@gmail.com');",
+                  "pm.collectionVariables.set(K + '_phone', '01' + rnd(9));",
+                  "pm.collectionVariables.set(K + '_nid', rnd(10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const u = body.user || body.data || body;",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Created user matches the request (email + role)', () => {",
+                  "  pm.expect(u.email).to.eql(pm.variables.get('agent_email'));",
+                  "  pm.expect(u.role).to.eql('Agent');",
+                  "});",
+                  "if (u && u.id !== undefined) { pm.collectionVariables.set('agent_id', String(u.id)); }",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Admin creates a Agent using POST /user/create. A new user is created with status `pending`.\n\n**Expected:** 201 Created; response contains the created user (e-mail and role match).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{agent_name}}\",\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{agent_phone}}\",\n  \"nid\": \"{{agent_nid}}\",\n  \"role\": \"Agent\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC07 - Create Merchant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'merchant';",
+                  "const rnd = (n) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join('');",
+                  "const stamp = Date.now().toString().slice(-8);",
+                  "pm.collectionVariables.set(K + '_name', 'QA Merchant ' + rnd(3));",
+                  "pm.collectionVariables.set(K + '_email', 'dmoney.' + K + '.' + stamp + rnd(3) + '@gmail.com');",
+                  "pm.collectionVariables.set(K + '_phone', '01' + rnd(9));",
+                  "pm.collectionVariables.set(K + '_nid', rnd(10));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const u = body.user || body.data || body;",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Created user matches the request (email + role)', () => {",
+                  "  pm.expect(u.email).to.eql(pm.variables.get('merchant_email'));",
+                  "  pm.expect(u.role).to.eql('Merchant');",
+                  "});",
+                  "if (u && u.id !== undefined) { pm.collectionVariables.set('merchant_id', String(u.id)); }",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Admin creates a Merchant using POST /user/create. A new user is created with status `pending`.\n\n**Expected:** 201 Created; response contains the created user (e-mail and role match).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{merchant_name}}\",\n  \"email\": \"{{merchant_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{merchant_phone}}\",\n  \"nid\": \"{{merchant_nid}}\",\n  \"role\": \"Merchant\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC08 - Create duplicate user (same e-mail & phone)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is one of 208/400/409', () => pm.expect(pm.response.code).to.be.oneOf([208, 400, 409]));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Message says the account already exists', () => pm.expect(String(body.message).toLowerCase()).to.include('exist'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Re-submit the exact payload used for Customer 1.\n\n**Expected:** Duplicate rejected (208 per API docs; 400/409 also accepted) with a message about the existing account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{customer1_name}}\",\n  \"email\": \"{{customer1_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer1_phone}}\",\n  \"nid\": \"{{customer1_nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC09 - Create user without Authorization token",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('noauth_email', 'dmoney.noauth.' + Date.now().toString().slice(-8) + '@gmail.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Error message is returned', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Call the protected create endpoint without a Bearer token.\n\n**Expected:** 401 Unauthorized.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA No Auth\",\n  \"email\": \"{{noauth_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"01700000000\",\n  \"nid\": \"1234567890\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC10 - Create user with invalid phone number",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('invalid_email', 'dmoney.invalid.' + Date.now().toString().slice(-8) + '@gmail.com');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Validation error message is returned', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "create"
+              ]
+            },
+            "description": "Phone number must be exactly 11 digits; send a 5-digit number.\n\n**Expected:** 400 Bad Request (validation error).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"QA Invalid Phone\",\n  \"email\": \"{{invalid_email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"12345\",\n  \"nid\": \"1234567890\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Activate Users (Admin)",
+      "description": "Newly created users are `pending`; Admin must activate them before they can transact.",
+      "item": [
+        {
+          "name": "TC11 - Activate Customer 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Make sure we know the user id. Normally it was stored by the create request;",
+                  "// otherwise look it up by phone number using the admin token.",
+                  "const K = 'customer1';",
+                  "if (!pm.collectionVariables.get(K + '_id')) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.variables.get('baseUrl') + '/user/search/phonenumber/' + pm.variables.get(K + '_phone'),",
+                  "    method: 'GET',",
+                  "    header: {",
+                  "      Authorization: 'Bearer ' + pm.variables.get('admin_token'),",
+                  "      'X-AUTH-SECRET-KEY': pm.variables.get('partnerKey'),",
+                  "    },",
+                  "  }, (err, res) => {",
+                  "    try {",
+                  "      const j = res.json();",
+                  "      const u = j.user || j.data || j;",
+                  "      if (u && u.id !== undefined) pm.collectionVariables.set(K + '_id', String(u.id));",
+                  "    } catch (e) { /* ignore, the test below will report the failure */ }",
+                  "  });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('User status is \"active\" (when returned by the API)', () => {",
+                  "  const u = body.user || body.data || body;",
+                  "  if (u && u.status !== undefined) pm.expect(u.status).to.eql('active');",
+                  "});",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/update/{{customer1_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{customer1_id}}"
+              ]
+            },
+            "description": "Admin activates the Customer 1 via PATCH /user/update/:id with `{\"status\":\"active\"}`.\n\n**Expected:** 200 OK; user status becomes active.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC12 - Activate Customer 2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Make sure we know the user id. Normally it was stored by the create request;",
+                  "// otherwise look it up by phone number using the admin token.",
+                  "const K = 'customer2';",
+                  "if (!pm.collectionVariables.get(K + '_id')) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.variables.get('baseUrl') + '/user/search/phonenumber/' + pm.variables.get(K + '_phone'),",
+                  "    method: 'GET',",
+                  "    header: {",
+                  "      Authorization: 'Bearer ' + pm.variables.get('admin_token'),",
+                  "      'X-AUTH-SECRET-KEY': pm.variables.get('partnerKey'),",
+                  "    },",
+                  "  }, (err, res) => {",
+                  "    try {",
+                  "      const j = res.json();",
+                  "      const u = j.user || j.data || j;",
+                  "      if (u && u.id !== undefined) pm.collectionVariables.set(K + '_id', String(u.id));",
+                  "    } catch (e) { /* ignore, the test below will report the failure */ }",
+                  "  });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('User status is \"active\" (when returned by the API)', () => {",
+                  "  const u = body.user || body.data || body;",
+                  "  if (u && u.status !== undefined) pm.expect(u.status).to.eql('active');",
+                  "});",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/update/{{customer2_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{customer2_id}}"
+              ]
+            },
+            "description": "Admin activates the Customer 2 via PATCH /user/update/:id with `{\"status\":\"active\"}`.\n\n**Expected:** 200 OK; user status becomes active.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC13 - Activate Agent",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Make sure we know the user id. Normally it was stored by the create request;",
+                  "// otherwise look it up by phone number using the admin token.",
+                  "const K = 'agent';",
+                  "if (!pm.collectionVariables.get(K + '_id')) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.variables.get('baseUrl') + '/user/search/phonenumber/' + pm.variables.get(K + '_phone'),",
+                  "    method: 'GET',",
+                  "    header: {",
+                  "      Authorization: 'Bearer ' + pm.variables.get('admin_token'),",
+                  "      'X-AUTH-SECRET-KEY': pm.variables.get('partnerKey'),",
+                  "    },",
+                  "  }, (err, res) => {",
+                  "    try {",
+                  "      const j = res.json();",
+                  "      const u = j.user || j.data || j;",
+                  "      if (u && u.id !== undefined) pm.collectionVariables.set(K + '_id', String(u.id));",
+                  "    } catch (e) { /* ignore, the test below will report the failure */ }",
+                  "  });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('User status is \"active\" (when returned by the API)', () => {",
+                  "  const u = body.user || body.data || body;",
+                  "  if (u && u.status !== undefined) pm.expect(u.status).to.eql('active');",
+                  "});",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/update/{{agent_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{agent_id}}"
+              ]
+            },
+            "description": "Admin activates the Agent via PATCH /user/update/:id with `{\"status\":\"active\"}`.\n\n**Expected:** 200 OK; user status becomes active.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC14 - Activate Merchant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Make sure we know the user id. Normally it was stored by the create request;",
+                  "// otherwise look it up by phone number using the admin token.",
+                  "const K = 'merchant';",
+                  "if (!pm.collectionVariables.get(K + '_id')) {",
+                  "  pm.sendRequest({",
+                  "    url: pm.variables.get('baseUrl') + '/user/search/phonenumber/' + pm.variables.get(K + '_phone'),",
+                  "    method: 'GET',",
+                  "    header: {",
+                  "      Authorization: 'Bearer ' + pm.variables.get('admin_token'),",
+                  "      'X-AUTH-SECRET-KEY': pm.variables.get('partnerKey'),",
+                  "    },",
+                  "  }, (err, res) => {",
+                  "    try {",
+                  "      const j = res.json();",
+                  "      const u = j.user || j.data || j;",
+                  "      if (u && u.id !== undefined) pm.collectionVariables.set(K + '_id', String(u.id));",
+                  "    } catch (e) { /* ignore, the test below will report the failure */ }",
+                  "  });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('User status is \"active\" (when returned by the API)', () => {",
+                  "  const u = body.user || body.data || body;",
+                  "  if (u && u.status !== undefined) pm.expect(u.status).to.eql('active');",
+                  "});",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/update/{{merchant_id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "update",
+                "{{merchant_id}}"
+              ]
+            },
+            "description": "Admin activates the Merchant via PATCH /user/update/:id with `{\"status\":\"active\"}`.\n\n**Expected:** 200 OK; user status becomes active.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"active\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - User Login (Agent & Customers)",
+      "description": "Tokens are required because the transaction API checks that the token owner is the `from_account`.",
+      "item": [
+        {
+          "name": "TC15 - Login as Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'agent';",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const direct = body.token || body.accessToken;",
+                  "",
+                  "if (direct) {",
+                  "  pm.collectionVariables.set(K + '_token', direct);",
+                  "  pm.test('JWT token is returned', () => pm.expect(direct).to.be.a('string'));",
+                  "} else {",
+                  "  pm.test('OTP challenge is returned (otpRequired = true)', () => pm.expect(body.otpRequired).to.eql(true));",
+                  "",
+                  "  const email = pm.variables.get(K + '_email');",
+                  "  const base = pm.variables.get('baseUrl');",
+                  "  const secret = pm.variables.get('partnerKey');",
+                  "",
+                  "  // recursively look for an \"otp\" key inside any response shape",
+                  "  const findOtp = (o) => {",
+                  "    if (o === null || typeof o !== 'object') return undefined;",
+                  "    for (const k of Object.keys(o)) {",
+                  "      if (k.toLowerCase() === 'otp' && o[k]) return String(o[k]);",
+                  "      const r = findOtp(o[k]);",
+                  "      if (r) return r;",
+                  "    }",
+                  "    return undefined;",
+                  "  };",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: base + '/user/search/email/' + encodeURIComponent(email),",
+                  "    method: 'GET',",
+                  "    header: { Authorization: 'Bearer ' + pm.variables.get('admin_token'), 'X-AUTH-SECRET-KEY': secret },",
+                  "  }, (err, res) => {",
+                  "    let otp;",
+                  "    try { otp = findOtp(res.json()); } catch (e) { otp = undefined; }",
+                  "    pm.test('Admin can read the OTP generated for the user', () => pm.expect(otp).to.be.a('string'));",
+                  "    if (!otp) return;",
+                  "",
+                  "    pm.sendRequest({",
+                  "      url: base + '/user/verify-otp',",
+                  "      method: 'POST',",
+                  "      header: { 'Content-Type': 'application/json' },",
+                  "      body: { mode: 'raw', raw: JSON.stringify({ identifier: email, otp: otp }) },",
+                  "    }, (err2, res2) => {",
+                  "      let tok;",
+                  "      try { const j = res2.json(); tok = j.token || j.accessToken; } catch (e) { tok = undefined; }",
+                  "      pm.test('OTP verified and JWT token issued', () => {",
+                  "        pm.expect(res2.code).to.equal(200);",
+                  "        pm.expect(tok).to.be.a('string');",
+                  "      });",
+                  "      if (tok) pm.collectionVariables.set(K + '_token', tok);",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login as the Agent. If the server uses the e-mail OTP flow, the script reads the OTP through the Admin search API and calls /user/verify-otp automatically. The JWT is stored in `agent_token`.\n\n**Expected:** 200 OK, JWT stored (directly, or after OTP verification).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{agent_email}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC16 - Login as Customer 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'customer1';",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const direct = body.token || body.accessToken;",
+                  "",
+                  "if (direct) {",
+                  "  pm.collectionVariables.set(K + '_token', direct);",
+                  "  pm.test('JWT token is returned', () => pm.expect(direct).to.be.a('string'));",
+                  "} else {",
+                  "  pm.test('OTP challenge is returned (otpRequired = true)', () => pm.expect(body.otpRequired).to.eql(true));",
+                  "",
+                  "  const email = pm.variables.get(K + '_email');",
+                  "  const base = pm.variables.get('baseUrl');",
+                  "  const secret = pm.variables.get('partnerKey');",
+                  "",
+                  "  // recursively look for an \"otp\" key inside any response shape",
+                  "  const findOtp = (o) => {",
+                  "    if (o === null || typeof o !== 'object') return undefined;",
+                  "    for (const k of Object.keys(o)) {",
+                  "      if (k.toLowerCase() === 'otp' && o[k]) return String(o[k]);",
+                  "      const r = findOtp(o[k]);",
+                  "      if (r) return r;",
+                  "    }",
+                  "    return undefined;",
+                  "  };",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: base + '/user/search/email/' + encodeURIComponent(email),",
+                  "    method: 'GET',",
+                  "    header: { Authorization: 'Bearer ' + pm.variables.get('admin_token'), 'X-AUTH-SECRET-KEY': secret },",
+                  "  }, (err, res) => {",
+                  "    let otp;",
+                  "    try { otp = findOtp(res.json()); } catch (e) { otp = undefined; }",
+                  "    pm.test('Admin can read the OTP generated for the user', () => pm.expect(otp).to.be.a('string'));",
+                  "    if (!otp) return;",
+                  "",
+                  "    pm.sendRequest({",
+                  "      url: base + '/user/verify-otp',",
+                  "      method: 'POST',",
+                  "      header: { 'Content-Type': 'application/json' },",
+                  "      body: { mode: 'raw', raw: JSON.stringify({ identifier: email, otp: otp }) },",
+                  "    }, (err2, res2) => {",
+                  "      let tok;",
+                  "      try { const j = res2.json(); tok = j.token || j.accessToken; } catch (e) { tok = undefined; }",
+                  "      pm.test('OTP verified and JWT token issued', () => {",
+                  "        pm.expect(res2.code).to.equal(200);",
+                  "        pm.expect(tok).to.be.a('string');",
+                  "      });",
+                  "      if (tok) pm.collectionVariables.set(K + '_token', tok);",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login as the Customer 1. If the server uses the e-mail OTP flow, the script reads the OTP through the Admin search API and calls /user/verify-otp automatically. The JWT is stored in `customer1_token`.\n\n**Expected:** 200 OK, JWT stored (directly, or after OTP verification).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer1_email}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC17 - Login as Customer 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const K = 'customer2';",
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const direct = body.token || body.accessToken;",
+                  "",
+                  "if (direct) {",
+                  "  pm.collectionVariables.set(K + '_token', direct);",
+                  "  pm.test('JWT token is returned', () => pm.expect(direct).to.be.a('string'));",
+                  "} else {",
+                  "  pm.test('OTP challenge is returned (otpRequired = true)', () => pm.expect(body.otpRequired).to.eql(true));",
+                  "",
+                  "  const email = pm.variables.get(K + '_email');",
+                  "  const base = pm.variables.get('baseUrl');",
+                  "  const secret = pm.variables.get('partnerKey');",
+                  "",
+                  "  // recursively look for an \"otp\" key inside any response shape",
+                  "  const findOtp = (o) => {",
+                  "    if (o === null || typeof o !== 'object') return undefined;",
+                  "    for (const k of Object.keys(o)) {",
+                  "      if (k.toLowerCase() === 'otp' && o[k]) return String(o[k]);",
+                  "      const r = findOtp(o[k]);",
+                  "      if (r) return r;",
+                  "    }",
+                  "    return undefined;",
+                  "  };",
+                  "",
+                  "  pm.sendRequest({",
+                  "    url: base + '/user/search/email/' + encodeURIComponent(email),",
+                  "    method: 'GET',",
+                  "    header: { Authorization: 'Bearer ' + pm.variables.get('admin_token'), 'X-AUTH-SECRET-KEY': secret },",
+                  "  }, (err, res) => {",
+                  "    let otp;",
+                  "    try { otp = findOtp(res.json()); } catch (e) { otp = undefined; }",
+                  "    pm.test('Admin can read the OTP generated for the user', () => pm.expect(otp).to.be.a('string'));",
+                  "    if (!otp) return;",
+                  "",
+                  "    pm.sendRequest({",
+                  "      url: base + '/user/verify-otp',",
+                  "      method: 'POST',",
+                  "      header: { 'Content-Type': 'application/json' },",
+                  "      body: { mode: 'raw', raw: JSON.stringify({ identifier: email, otp: otp }) },",
+                  "    }, (err2, res2) => {",
+                  "      let tok;",
+                  "      try { const j = res2.json(); tok = j.token || j.accessToken; } catch (e) { tok = undefined; }",
+                  "      pm.test('OTP verified and JWT token issued', () => {",
+                  "        pm.expect(res2.code).to.equal(200);",
+                  "        pm.expect(tok).to.be.a('string');",
+                  "      });",
+                  "      if (tok) pm.collectionVariables.set(K + '_token', tok);",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/user/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "user",
+                "login"
+              ]
+            },
+            "description": "Login as the Customer 2. If the server uses the e-mail OTP flow, the script reads the OTP through the Admin search API and calls /user/verify-otp automatically. The JWT is stored in `customer2_token`.\n\n**Expected:** 200 OK, JWT stored (directly, or after OTP verification).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer2_email}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Transactions (deposit, send money, cash-out, payment)",
+      "description": "End-to-end money flow with fee/commission assertions, plus negative scenarios.",
+      "item": [
+        {
+          "name": "TC18 - SYSTEM deposits 5000 tk to Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Transaction id is returned', () => pm.expect(body).to.have.property('trnxId'));",
+                  "pm.test('currentBalance is returned', () => pm.expect(body).to.have.property('currentBalance'));",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{system_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "SYSTEM account funds the Agent with 5000 tk.\n\n**Expected:** 201 Created with trnxId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{systemAccount}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC19 - SYSTEM deposit below minimum amount (5 tk)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Error message is returned', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{system_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Minimum transaction amount is 10 tk.\n\n**Expected:** 400 Bad Request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{systemAccount}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC20 - Agent deposits 2000 tk to Customer 1 (assert commission)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('deposit_amount', 2000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Transaction id is returned', () => pm.expect(body).to.have.property('trnxId'));",
+                  "const amount = Number(pm.collectionVariables.get('deposit_amount'));",
+                  "const expectedCommission = Number((amount * 0.025).toFixed(2));",
+                  "pm.test('Deposit commission is 2.5% of the amount (' + expectedCommission + ' tk)', () => {",
+                  "  pm.expect(Number(body.commission)).to.eql(expectedCommission);",
+                  "});",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Agent cash-in to Customer 1. Deposit commission = 2.5% of the amount (2000 x 2.5% = 50 tk).\n\n**Expected:** 201 Created and `commission` = 50.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{customer1_phone}}\",\n  \"amount\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC21 - Agent deposit above maximum (10001 tk)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is one of 400/208', () => pm.expect(pm.response.code).to.be.oneOf([400, 208]));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(body.trnxId).to.equal(undefined));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agent_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Maximum deposit per transaction is 10,000 tk.\n\n**Expected:** 400 Bad Request (or 208 soft-failure) - money must NOT be moved.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{customer1_phone}}\",\n  \"amount\": 10001\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC22 - Deposit without Authorization token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(body.trnxId).to.equal(undefined));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/deposit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "deposit"
+              ]
+            },
+            "description": "Transaction endpoints require a JWT.\n\n**Expected:** 401 Unauthorized.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agent_phone}}\",\n  \"to_account\": \"{{customer1_phone}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC23 - Customer 1 sends 1000 tk to Customer 2 (assert service fee)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('sendmoney_amount', 1000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Transaction id is returned', () => pm.expect(body).to.have.property('trnxId'));",
+                  "pm.test('Send-money service fee is 5 tk', () => pm.expect(Number(body.fee)).to.eql(5));",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/sendmoney",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "Send money has a flat service fee of 5 tk.\n\n**Expected:** 201 Created and `fee` = 5.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer1_phone}}\",\n  \"to_account\": \"{{customer2_phone}}\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC24 - Send money to the same account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Error message is returned', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/sendmoney",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "from_account and to_account must be different.\n\n**Expected:** 400 Bad Request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer1_phone}}\",\n  \"to_account\": \"{{customer1_phone}}\",\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC25 - Send money with insufficient balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is one of 208/400', () => pm.expect(pm.response.code).to.be.oneOf([208, 400]));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(body.trnxId).to.equal(undefined));",
+                  "pm.test('Message mentions insufficient balance', () => pm.expect(String(body.message).toLowerCase()).to.include('insufficient'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer1_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/sendmoney",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "sendmoney"
+              ]
+            },
+            "description": "Customer 1 only has ~995 tk left (2000 - 1000 - 5 fee).\n\n**Expected:** 208 (soft failure) or 400 - insufficient balance, no transaction id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer1_phone}}\",\n  \"to_account\": \"{{customer2_phone}}\",\n  \"amount\": 3000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC26 - Cash-out below minimum amount (5 tk)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 400', () => pm.response.to.have.status(400));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Error message is returned', () => pm.expect(body).to.have.property('message'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "withdraw"
+              ]
+            },
+            "description": "Minimum transaction amount is 10 tk.\n\n**Expected:** 400 Bad Request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC27 - Customer 2 cashes out 500 tk from Agent (assert service fee)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('withdraw_amount', 500);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Transaction id is returned', () => pm.expect(body).to.have.property('trnxId'));",
+                  "const amount = Number(pm.collectionVariables.get('withdraw_amount'));",
+                  "const expectedFee = Math.max(5, Number((amount * 0.01).toFixed(2)));",
+                  "pm.test('Cash-out service fee is max(5, 1%) = ' + expectedFee + ' tk', () => pm.expect(Number(body.fee)).to.eql(expectedFee));",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "withdraw"
+              ]
+            },
+            "description": "Withdraw (cash-out) fee = 1% of the amount, minimum 5 tk -> max(5, 500 x 1%) = 5 tk.\n\n**Expected:** 201 Created and `fee` = 5.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2_phone}}\",\n  \"to_account\": \"{{agent_phone}}\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC28 - Customer 2 pays 400 tk to Merchant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('payment_amount', 400);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 201', () => pm.response.to.have.status(201));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('Response contains a message', () => pm.expect(body).to.have.property('message'));",
+                  "pm.test('Transaction id is returned', () => pm.expect(body).to.have.property('trnxId'));",
+                  "const amount = Number(pm.collectionVariables.get('payment_amount'));",
+                  "const expectedFee = Math.max(5, Number((amount * 0.01).toFixed(2)));",
+                  "pm.test('Payment service fee is max(5, 1%) = ' + expectedFee + ' tk', () => pm.expect(Number(body.fee)).to.eql(expectedFee));",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "payment"
+              ]
+            },
+            "description": "Payment fee = 1% of the amount, minimum 5 tk -> max(5, 400 x 1%) = 5 tk.\n\n**Expected:** 201 Created, trnxId returned and `fee` = 5.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC29 - Payment with insufficient balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is one of 208/400', () => pm.expect(pm.response.code).to.be.oneOf([208, 400]));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(body.trnxId).to.equal(undefined));",
+                  "pm.test('Message mentions insufficient balance', () => pm.expect(String(body.message).toLowerCase()).to.include('insufficient'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/payment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "payment"
+              ]
+            },
+            "description": "Customer 2 has ~90 tk left after cash-out and payment.\n\n**Expected:** 208 (soft failure) or 400 - insufficient balance, no transaction id.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2_phone}}\",\n  \"to_account\": \"{{merchant_phone}}\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "TC30 - Verify Customer 2 final balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+                  "",
+                  "let body = {};",
+                  "try { body = pm.response.json(); } catch (e) { body = {}; }",
+                  "",
+                  "const balance = body.balance !== undefined ? body.balance : body.currentBalance;",
+                  "pm.test('Final balance of Customer 2 is 90 tk', () => pm.expect(Number(balance)).to.eql(90));",
+                  "pm.test('Response time is below 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2_token}}"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{partnerKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transaction/balance/{{customer2_phone}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transaction",
+                "balance",
+                "{{customer2_phone}}"
+              ]
+            },
+            "description": "Customer 2: +1000 (received) - 500 - 5 (cash-out + fee) - 400 - 5 (payment + fee) = 90 tk.\n\n**Expected:** 200 OK and balance = 90."
+          }
+        }
+      ]
+    }
+  ],
+  "variable": []
+}

@@ -1,0 +1,14 @@
+# dependencies
+node_modules/
+
+# Newman reports
+Reports/
+
+# secrets / local config
+.env
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
