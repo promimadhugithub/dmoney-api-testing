@@ -7,8 +7,7 @@ This is the Batch 20 assignment "Integration testing with Postman".
 
 | Item | Link |
 |---|---|
-| Postman collection (test cases) | [DMoney_API_Testing.postman_collection.json](DMoney_API_Testing.postman_collection.json) |
-| Published API documentation | PASTE_REAL_POSTMAN_DOCS_LINK_HERE |
+| Published API documentation | [Postman collection documentation](DMoney_API_Testing.postman_collection.json) |
 
 ## Flow covered
 
