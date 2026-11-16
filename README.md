@@ -7,8 +7,8 @@ This is the Batch 20 assignment "Integration testing with Postman".
 
 | Item | Link |
 |---|---|
-| Postman collection (test cases) | `<ADD POSTMAN COLLECTION LINK HERE>` (the exported file is also in this repo: [`DMoney_API_Testing.postman_collection.json`](DMoney_API_Testing.postman_collection.json)) |
-| Published API documentation | `<ADD POSTMAN DOCUMENTATION LINK HERE>` |
+| Postman collection (test cases) | https://https://github.com/promimadhugithub/dmoney-api-testing(the exported file is also in this repo: [`DMoney_API_Testing.postman_collection.json`](DMoney_API_Testing.postman_collection.json)) |
+| Published API documentation | https://documenter.getpostman.com/view/... |
 
 ## Flow covered
 
