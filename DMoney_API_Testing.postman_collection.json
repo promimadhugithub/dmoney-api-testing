@@ -1,0 +1,1588 @@
+{
+  "info": {
+    "name": "DMoney API Testing",
+    "description": "Integration tests for the DMoney user and transaction APIs (Batch 20 assignment). Flow: create 2 customers, 1 agent and 1 merchant, activate them as admin, deposit 5000 tk from SYSTEM to the agent, agent deposits 2000 tk to a customer (commission asserted), customer sends 1000 tk (fee asserted), other customer cashes out 500 tk (fee asserted) and pays 400 tk to the merchant. Run the folders in order: later requests use tokens and ids stored by earlier ones.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "0. Authentication",
+      "description": "Logs in the admin and the SYSTEM account.",
+      "item": [
+        {
+          "name": "Admin Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Login message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Token is returned', () => pm.expect(res.token).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('adminToken', res.token);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathLogin}}",
+            "description": "Admin login. The returned token is used to create and activate users.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "System Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Login message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Token is returned', () => pm.expect(res.token).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('systemToken', res.token);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathLogin}}",
+            "description": "SYSTEM account login (system@dmoney.com / 1234). The token is used for the first deposit to the agent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{systemEmail}}\",\n  \"password\": \"{{systemPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Create Users",
+      "description": "Creates 2 customers, 1 agent and 1 merchant, plus negative cases.",
+      "item": [
+        {
+          "name": "Create Customer 1",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = (n) => Math.floor(Math.random() * 9 * Math.pow(10, n - 1) + Math.pow(10, n - 1));",
+                  "pm.environment.set('customer1Phone', '01' + rnd(9));",
+                  "pm.environment.set('customer1Email', 'customer1_' + Date.now() + '@test.com');",
+                  "pm.environment.set('customer1Nid', String(rnd(10)));",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "const user = res.user || res;",
+                  "pm.test('User id is returned', () => pm.expect(user.id || user._id).to.exist);",
+                  "pm.environment.set('customer1Id', user.id || user._id);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "Creates the first customer with a random phone, email and NID.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Customer One\",\n  \"email\": \"{{customer1Email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer1Phone}}\",\n  \"nid\": \"{{customer1Nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Customer 2",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = (n) => Math.floor(Math.random() * 9 * Math.pow(10, n - 1) + Math.pow(10, n - 1));",
+                  "pm.environment.set('customer2Phone', '01' + rnd(9));",
+                  "pm.environment.set('customer2Email', 'customer2_' + Date.now() + '@test.com');",
+                  "pm.environment.set('customer2Nid', String(rnd(10)));",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "const user = res.user || res;",
+                  "pm.test('User id is returned', () => pm.expect(user.id || user._id).to.exist);",
+                  "pm.environment.set('customer2Id', user.id || user._id);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "Creates the second customer.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Customer Two\",\n  \"email\": \"{{customer2Email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer2Phone}}\",\n  \"nid\": \"{{customer2Nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Agent",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = (n) => Math.floor(Math.random() * 9 * Math.pow(10, n - 1) + Math.pow(10, n - 1));",
+                  "pm.environment.set('agentPhone', '01' + rnd(9));",
+                  "pm.environment.set('agentEmail', 'agent_' + Date.now() + '@test.com');",
+                  "pm.environment.set('agentNid', String(rnd(10)));",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "const user = res.user || res;",
+                  "pm.test('User id is returned', () => pm.expect(user.id || user._id).to.exist);",
+                  "pm.environment.set('agentId', user.id || user._id);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "Creates the agent.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Agent One\",\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{agentPhone}}\",\n  \"nid\": \"{{agentNid}}\",\n  \"role\": \"Agent\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Create Merchant",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const rnd = (n) => Math.floor(Math.random() * 9 * Math.pow(10, n - 1) + Math.pow(10, n - 1));",
+                  "pm.environment.set('merchantPhone', '01' + rnd(9));",
+                  "pm.environment.set('merchantEmail', 'merchant_' + Date.now() + '@test.com');",
+                  "pm.environment.set('merchantNid', String(rnd(10)));",
+                  ""
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "const user = res.user || res;",
+                  "pm.test('User id is returned', () => pm.expect(user.id || user._id).to.exist);",
+                  "pm.environment.set('merchantId', user.id || user._id);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "Creates the merchant.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Merchant One\",\n  \"email\": \"{{merchantEmail}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{merchantPhone}}\",\n  \"nid\": \"{{merchantNid}}\",\n  \"role\": \"Merchant\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Create user with duplicate email and phone",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Duplicate user is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No new user id is returned', () => { const b = safeJson(pm.response); pm.expect((b.user || {}).id).to.be.undefined; });",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "Re-uses the data of Customer 1. The API must not create a second user.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Customer One Duplicate\",\n  \"email\": \"{{customer1Email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer1Phone}}\",\n  \"nid\": \"{{customer1Nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Create user without auth token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401 or 403', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathCreateUser}}",
+            "description": "The request has no Authorization header.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"No Token User\",\n  \"email\": \"{{customer1Email}}\",\n  \"password\": \"{{userPassword}}\",\n  \"phone_number\": \"{{customer1Phone}}\",\n  \"nid\": \"{{customer1Nid}}\",\n  \"role\": \"Customer\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Activate Users (Admin)",
+      "description": "The admin activates all four users.",
+      "item": [
+        {
+          "name": "Activate Customer 1",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('Activation message is returned', () => pm.expect(pm.response.json().message).to.be.a('string').and.not.empty);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathActivate}}/{{customer1Id}}",
+            "description": "Admin activates the Customer 1. Verify the activation method/path against the Swagger docs."
+          }
+        },
+        {
+          "name": "Activate Customer 2",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('Activation message is returned', () => pm.expect(pm.response.json().message).to.be.a('string').and.not.empty);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathActivate}}/{{customer2Id}}",
+            "description": "Admin activates the Customer 2. Verify the activation method/path against the Swagger docs."
+          }
+        },
+        {
+          "name": "Activate Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('Activation message is returned', () => pm.expect(pm.response.json().message).to.be.a('string').and.not.empty);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathActivate}}/{{agentId}}",
+            "description": "Admin activates the Agent. Verify the activation method/path against the Swagger docs."
+          }
+        },
+        {
+          "name": "Activate Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('Activation message is returned', () => pm.expect(pm.response.json().message).to.be.a('string').and.not.empty);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{adminToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathActivate}}/{{merchantId}}",
+            "description": "Admin activates the Merchant. Verify the activation method/path against the Swagger docs."
+          }
+        },
+        {
+          "name": "[Negative] Activate user without auth token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 401 or 403', () => pm.expect(pm.response.code).to.be.oneOf([401, 403]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathActivate}}/{{customer1Id}}",
+            "description": "No Authorization header, so activation must be refused."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. System Deposit to Agent",
+      "description": "SYSTEM deposits 5000 tk to the agent.",
+      "item": [
+        {
+          "name": "System deposits 5000 tk to Agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Transaction id (trnxId) is returned', () => pm.expect(res.trnxId).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('lastTrnxId', res.trnxId);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{systemToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathDeposit}}",
+            "description": "From the SYSTEM account to the agent account.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{systemAccount}}\",\n  \"to_account\": \"{{agentPhone}}\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] System deposit to a non-existent account",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Deposit to unknown account is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(safeJson(pm.response).trnxId).to.be.undefined);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{systemToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathDeposit}}",
+            "description": "The receiver account does not exist.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{systemAccount}}\",\n  \"to_account\": \"01000000000\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Agent Deposit to Customer",
+      "description": "The agent deposits 2000 tk to Customer 1 and the commission is asserted.",
+      "item": [
+        {
+          "name": "Agent Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Login message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Token is returned', () => pm.expect(res.token).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('agentToken', res.token);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathLogin}}",
+            "description": "Agent login (requires the agent to be activated).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{agentEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Agent balance is 5000 after system deposit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('Balance equals 5000 tk', () => {",
+                  "  const bal = findNum(safeJson(pm.response), ['balance', 'currentbalance']);",
+                  "  pm.expect(bal, 'balance field found').to.not.be.undefined;",
+                  "  pm.expect(bal).to.eql(5000);",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathBalance}}/{{agentPhone}}",
+            "description": "Reads the balance of {{agentPhone}}."
+          }
+        },
+        {
+          "name": "Agent deposits 2000 tk to Customer 1 (assert commission)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Transaction id (trnxId) is returned', () => pm.expect(res.trnxId).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('lastTrnxId', res.trnxId);",
+                  "",
+                  "const expected = round2(2000 * parseFloat(pm.environment.get('depositCommissionRate')));",
+                  "const keys = [\"commission\",\"agentcommission\",\"agent_commission\"];",
+                  "const url = pm.environment.get('baseUrl') + pm.environment.get('pathStatement') + '/' + res.trnxId;",
+                  "pm.sendRequest({",
+                  "  url: url,",
+                  "  method: 'GET',",
+                  "  header: {",
+                  "    'Authorization': 'Bearer ' + pm.environment.get('agentToken'),",
+                  "    'X-AUTH-SECRET-KEY': pm.environment.get('secretKey'),",
+                  "  },",
+                  "}, (err, statement) => {",
+                  "  pm.test('Deposit commission is ' + expected + ' tk for 2000 tk', () => {",
+                  "    pm.expect(err, 'statement request error').to.be.null;",
+                  "    let actual = findNum(res, keys);",
+                  "    if (actual === undefined) actual = findNum(safeJson(statement), keys);",
+                  "    pm.expect(actual, 'fee/commission field (' + keys.join(' | ') + ') found in response or statement').to.not.be.undefined;",
+                  "    pm.expect(actual).to.be.closeTo(expected, 0.01);",
+                  "  });",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathDeposit}}",
+            "description": "Agent to customer deposit. Asserts the deposit commission = amount x depositCommissionRate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agentPhone}}\",\n  \"to_account\": \"{{customer1Phone}}\",\n  \"amount\": 2000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Agent deposit more than agent balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Deposit above balance is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(safeJson(pm.response).trnxId).to.be.undefined);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{agentToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathDeposit}}",
+            "description": "The agent only has about 3000 tk left, so 9000 tk must be refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{agentPhone}}\",\n  \"to_account\": \"{{customer1Phone}}\",\n  \"amount\": 9000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Send Money",
+      "description": "Customer 1 sends 1000 tk to Customer 2 and the service fee is asserted.",
+      "item": [
+        {
+          "name": "Customer 1 Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Login message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Token is returned', () => pm.expect(res.token).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('customer1Token', res.token);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathLogin}}",
+            "description": "Customer 1 login.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer1Email}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Customer 1 sends 1000 tk to Customer 2 (assert service fee)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Transaction id (trnxId) is returned', () => pm.expect(res.trnxId).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('lastTrnxId', res.trnxId);",
+                  "",
+                  "const expected = round2(parseFloat(pm.environment.get('sendMoneyFee')));",
+                  "const keys = [\"fee\",\"servicefee\",\"service_fee\",\"charge\"];",
+                  "const url = pm.environment.get('baseUrl') + pm.environment.get('pathStatement') + '/' + res.trnxId;",
+                  "pm.sendRequest({",
+                  "  url: url,",
+                  "  method: 'GET',",
+                  "  header: {",
+                  "    'Authorization': 'Bearer ' + pm.environment.get('customer1Token'),",
+                  "    'X-AUTH-SECRET-KEY': pm.environment.get('secretKey'),",
+                  "  },",
+                  "}, (err, statement) => {",
+                  "  pm.test('Send money service fee is ' + expected + ' tk for 1000 tk', () => {",
+                  "    pm.expect(err, 'statement request error').to.be.null;",
+                  "    let actual = findNum(res, keys);",
+                  "    if (actual === undefined) actual = findNum(safeJson(statement), keys);",
+                  "    pm.expect(actual, 'fee/commission field (' + keys.join(' | ') + ') found in response or statement').to.not.be.undefined;",
+                  "    pm.expect(actual).to.be.closeTo(expected, 0.01);",
+                  "  });",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer1Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathSendMoney}}",
+            "description": "Customer to customer transfer. Asserts the fee = sendMoneyFee.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer1Phone}}\",\n  \"to_account\": \"{{customer2Phone}}\",\n  \"amount\": 1000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Send money more than balance",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Send money above balance is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(safeJson(pm.response).trnxId).to.be.undefined);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer1Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathSendMoney}}",
+            "description": "Customer 1 has about 1000 tk left, so 5000 tk must be refused.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer1Phone}}\",\n  \"to_account\": \"{{customer2Phone}}\",\n  \"amount\": 5000\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Cashout",
+      "description": "Customer 2 cashes out 500 tk from the agent and the service fee is asserted.",
+      "item": [
+        {
+          "name": "Customer 2 Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200', () => pm.expect(pm.response.code).to.be.oneOf([200]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Login message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Token is returned', () => pm.expect(res.token).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('customer2Token', res.token);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathLogin}}",
+            "description": "Customer 2 login.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{customer2Email}}\",\n  \"password\": \"{{userPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Customer 2 cashout 500 tk from Agent (assert service fee)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Transaction id (trnxId) is returned', () => pm.expect(res.trnxId).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('lastTrnxId', res.trnxId);",
+                  "",
+                  "const expected = round2(500 * parseFloat(pm.environment.get('cashoutFeeRate')));",
+                  "const keys = [\"fee\",\"servicefee\",\"service_fee\",\"charge\"];",
+                  "const url = pm.environment.get('baseUrl') + pm.environment.get('pathStatement') + '/' + res.trnxId;",
+                  "pm.sendRequest({",
+                  "  url: url,",
+                  "  method: 'GET',",
+                  "  header: {",
+                  "    'Authorization': 'Bearer ' + pm.environment.get('customer2Token'),",
+                  "    'X-AUTH-SECRET-KEY': pm.environment.get('secretKey'),",
+                  "  },",
+                  "}, (err, statement) => {",
+                  "  pm.test('Cashout service fee is ' + expected + ' tk for 500 tk', () => {",
+                  "    pm.expect(err, 'statement request error').to.be.null;",
+                  "    let actual = findNum(res, keys);",
+                  "    if (actual === undefined) actual = findNum(safeJson(statement), keys);",
+                  "    pm.expect(actual, 'fee/commission field (' + keys.join(' | ') + ') found in response or statement').to.not.be.undefined;",
+                  "    pm.expect(actual).to.be.closeTo(expected, 0.01);",
+                  "  });",
+                  "});",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathWithdraw}}",
+            "description": "Customer to agent withdrawal. Asserts the fee = amount x cashoutFeeRate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2Phone}}\",\n  \"to_account\": \"{{agentPhone}}\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Cashout from a non-existent agent",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Cashout from unknown agent is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(safeJson(pm.response).trnxId).to.be.undefined);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathWithdraw}}",
+            "description": "The agent account does not exist.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2Phone}}\",\n  \"to_account\": \"01000000000\",\n  \"amount\": 500\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Payment to Merchant",
+      "description": "Customer 2 pays 400 tk to the merchant.",
+      "item": [
+        {
+          "name": "Customer 2 pays 400 tk to Merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "pm.test('Status code is 200 or 201', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.test('Success message is returned', () => pm.expect(res.message).to.be.a('string').and.not.empty);",
+                  "pm.test('Transaction id (trnxId) is returned', () => pm.expect(res.trnxId).to.be.a('string').and.not.empty);",
+                  "pm.environment.set('lastTrnxId', res.trnxId);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathPayment}}",
+            "description": "Customer to merchant payment.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2Phone}}\",\n  \"to_account\": \"{{merchantPhone}}\",\n  \"amount\": 400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "[Negative] Payment to a non-existent merchant",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "",
+                  "const toNum = (v) => { const n = parseFloat(v); return isNaN(n) ? undefined : n; };",
+                  "const round2 = (n) => Math.round(n * 100) / 100;",
+                  "// Finds the first numeric value whose key (case-insensitive) is in keys, searching nested objects too.",
+                  "const findNum = (o, keys) => {",
+                  "  if (o === null || typeof o !== 'object') return undefined;",
+                  "  for (const k of Object.keys(o)) {",
+                  "    if (keys.includes(k.toLowerCase()) && toNum(o[k]) !== undefined) return toNum(o[k]);",
+                  "  }",
+                  "  for (const k of Object.keys(o)) {",
+                  "    const r = findNum(o[k], keys);",
+                  "    if (r !== undefined) return r;",
+                  "  }",
+                  "  return undefined;",
+                  "};",
+                  "const safeJson = (r) => { try { return r.json(); } catch (e) { return {}; } };",
+                  "",
+                  "",
+                  "pm.test('Payment to unknown merchant is rejected with a client error (4xx or 208)', () => {",
+                  "  const c = pm.response.code;",
+                  "  pm.expect(c >= 400 && c < 500 || c === 208, 'status was ' + c).to.be.true;",
+                  "});",
+                  "pm.test('Response time is under 5000 ms', () => pm.expect(pm.response.responseTime).to.be.below(5000));",
+                  "",
+                  "pm.test('No transaction id is returned', () => pm.expect(safeJson(pm.response).trnxId).to.be.undefined);",
+                  ""
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-AUTH-SECRET-KEY",
+                "value": "{{secretKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer2Token}}"
+              }
+            ],
+            "url": "{{baseUrl}}{{pathPayment}}",
+            "description": "The merchant account does not exist.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_account\": \"{{customer2Phone}}\",\n  \"to_account\": \"01000000000\",\n  \"amount\": 400\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

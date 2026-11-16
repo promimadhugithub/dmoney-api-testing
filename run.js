@@ -1,35 +1,46 @@
-// Runs the Postman collection with Newman and writes an HTML report to ./Reports.
-// Optional overrides are read from a local .env file (see .env.example).
+// Runs the Postman collection with Newman and writes an HTML report to Reports/report.html.
+// Secrets (secretKey, admin credentials) are read from the git-ignored .env file and
+// override the placeholder values in the environment JSON.
 const fs = require('fs');
-const { spawnSync } = require('child_process');
+const path = require('path');
+const newman = require('newman');
 
-if (fs.existsSync('.env') && typeof process.loadEnvFile === 'function') {
-  process.loadEnvFile('.env'); // Node >= 20.12
+function loadDotEnv() {
+  const file = path.join(__dirname, '.env');
+  const vars = [];
+  if (!fs.existsSync(file)) return vars;
+  for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const i = t.indexOf('=');
+    if (i < 1) continue;
+    const key = t.slice(0, i).trim();
+    const value = t.slice(i + 1).trim();
+    if (value) vars.push({ key, value });
+  }
+  return vars;
 }
 
-// .env key -> Postman environment variable
-const overrides = {
-  BASE_URL: 'baseUrl',
-  PARTNER_KEY: 'partnerKey',
-  ADMIN_EMAIL: 'adminEmail',
-  ADMIN_PASSWORD: 'adminPassword',
-  SYSTEM_EMAIL: 'systemEmail',
-  SYSTEM_PASSWORD: 'systemPassword',
-  USER_PASSWORD: 'userPassword',
-};
-
-fs.mkdirSync('Reports', { recursive: true });
-
-const args = [
-  'newman', 'run', 'Collection/DMoney_API_Collection.postman_collection.json',
-  '-e', 'Collection/DMoney_Local.postman_environment.json',
-  '-r', 'cli,htmlextra',
-  '--reporter-htmlextra-export', 'Reports/newman-report.html',
-  '--reporter-htmlextra-title', 'DMoney API Test Report',
-];
-for (const [envKey, postmanKey] of Object.entries(overrides)) {
-  if (process.env[envKey]) args.push('--env-var', `${postmanKey}=${process.env[envKey]}`);
-}
-
-const result = spawnSync('npx', args, { stdio: 'inherit', shell: process.platform === 'win32' });
-process.exit(result.status === null ? 1 : result.status);
+newman.run(
+  {
+    collection: path.join(__dirname, 'DMoney_API_Testing.postman_collection.json'),
+    environment: path.join(__dirname, 'DMoney.postman_environment.json'),
+    envVar: loadDotEnv(),
+    reporters: ['cli', 'htmlextra'],
+    reporter: {
+      htmlextra: {
+        export: path.join(__dirname, 'Reports', 'report.html'),
+        title: 'DMoney API Test Report',
+        browserTitle: 'DMoney API Test Report',
+      },
+    },
+    delayRequest: 200,
+  },
+  (err, summary) => {
+    if (err) {
+      console.error(err);
+      process.exit(1);
+    }
+    process.exit(summary.run.failures.length ? 1 : 0);
+  }
+);
